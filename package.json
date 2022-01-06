@@ -5,14 +5,18 @@
   "keywords": [],
   "main": "src/index.js",
   "dependencies": {
+    "@tensorflow-models/tasks": "0.0.1-alpha.8",
     "@tensorflow/tfjs": "^3.12.0",
+    "@tensorflow/tfjs-backend-cpu": "^3.12.0",
     "@tensorflow/tfjs-converter": "^3.12.0",
     "@tensorflow/tfjs-core": "^3.12.0",
     "@tensorflow/tfjs-node": "^3.12.0",
+    "@tensorflow/tfjs-tflite": "0.0.1-alpha.8",
     "react": "16.5.2",
     "react-dom": "16.5.2",
     "react-magic-dropzone": "1.0.1",
-    "react-scripts": "2.0.3"
+    "react-scripts": "2.0.3",
+    "react-webcam": "^6.0.0"
   },
   "scripts": {
     "start": "react-scripts start",

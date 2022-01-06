@@ -1,35 +1,19 @@
 import React from "react";
 import ReactDOM from "react-dom";
-import * as tf from "@tensorflow/tfjs";
-import { loadGraphModel } from "@tensorflow/tfjs-converter";
-import "./styles.css";
-tf.setBackend("webgl");
 
-const threshold = 0.75;
+// import "@tensorflow/tfjs-backend-cpu"; ====>>>>>>>>>>>>>for tfjs lite
+// import * as tf from "@tensorflow/tfjs-core";
+import * as tftasks from "@tensorflow-models/tasks";
+// import * as tf from "@tensorflow/tfjs"; =====>>>>>>>>>>> we can use this for for tf graphmodel
+// import { loadGraphModel } from "@tensorflow/tfjs-converter"; =======>>>>to load converted graph
+import "./styles.css";
 
 async function load_model() {
-  // It's possible to load the model locally or from a repo
-  // You can choose whatever IP and PORT you want in the "http://127.0.0.1:8080/model.json" just set it before in your https server
-  // const model = await loadGraphModel("http://127.0.0.1:8080/model.json");
-  const model = await loadGraphModel(
-    "https://raw.githubusercontent.com/hugozanini/TFJS-object-detection/master/models/kangaroo-detector/model.json"
-  );
-  console.log(model.outputNodes);
-
+  const model = await tftasks.ObjectDetection.CustomModel.TFLite.load({
+    model: "http://127.0.0.1:8080/model.tflite",
+  });
   return model;
 }
-
-let classesDir = {
-  1: {
-    name: "Kangaroo",
-    id: 1,
-  },
-  2: {
-    name: "Other",
-    id: 2,
-  },
-};
-
 class App extends React.Component {
   videoRef = React.createRef();
   canvasRef = React.createRef();
@@ -65,128 +49,106 @@ class App extends React.Component {
     }
   }
 
-  detectFrame = (video, model) => {
-    tf.engine().startScope();
-    model.executeAsync(this.process_input(video)).then((predictions) => {
-      this.renderPredictions(predictions, video);
-      requestAnimationFrame(() => {
-        this.detectFrame(video, model);
-      });
-      tf.engine().endScope();
+  detectFrame = async (video, model) => {
+    const predections = await model.predict(video);
+    this.buildDetectedObjects(predections);
+    requestAnimationFrame(() => {
+      this.detectFrame(video, model);
     });
   };
 
-  process_input(video_frame) {
-    const tfimg = tf.browser.fromPixels(video_frame).toInt();
-    const expandedimg = tfimg.transpose([0, 1, 2]).expandDims();
-    return expandedimg;
+  buildDetectedObjects(result) {
+    const detectionObjects = result.objects;
+    for (let i = 0; i < Math.min(5, detectionObjects.length); i++) {
+      const curObject = detectionObjects[i];
+      const boundingBox = curObject.boundingBox;
+      const name = curObject.className;
+      const score = curObject.score;
+      this.renderPredictions(
+        boundingBox.originX,
+        boundingBox.originY,
+        boundingBox.width,
+        boundingBox.height,
+        name,
+        score
+      );
+    }
   }
 
-  buildDetectedObjects(scores, threshold, boxes, classes, classesDir) {
-    const detectionObjects = [];
-    var video_frame = document.getElementById("frame");
-
-    scores[0].forEach((score, i) => {
-      if (score > threshold) {
-        const bbox = [];
-        const minY = boxes[0][i][0] * video_frame.offsetHeight;
-        const minX = boxes[0][i][1] * video_frame.offsetWidth;
-        const maxY = boxes[0][i][2] * video_frame.offsetHeight;
-        const maxX = boxes[0][i][3] * video_frame.offsetWidth;
-        bbox[0] = minX;
-        bbox[1] = minY;
-        bbox[2] = maxX - minX;
-        bbox[3] = maxY - minY;
-        console.log(classes[i]);
-        detectionObjects.push({
-          class: classes[i],
-          label: classesDir[classes[i]].name,
-          score: score.toFixed(4),
-          bbox: bbox,
-        });
-      }
-    });
-    return detectionObjects;
-  }
-
-  renderPredictions = (predictions) => {
+  renderPredictions = (left, top, w, h, name, score) => {
     const ctx = this.canvasRef.current.getContext("2d");
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const x = top;
+    const y = left;
+    const width = w;
+    const height = h;
 
     // Font options.
     const font = "16px sans-serif";
     ctx.font = font;
     ctx.textBaseline = "top";
 
-    //Getting predictions
-    const boxes = predictions[0].arraySync();
-    const scores = predictions[4].arraySync();
-    const classes = predictions[5].dataSync();
+    // Draw the bounding box.
+    ctx.beginPath();
+    ctx.strokeStyle = "green";
+    ctx.lineWidth = 2;
+    ctx.rect(x, y, width, height);
+    ctx.stroke();
 
-    const detections = this.buildDetectedObjects(
-      scores,
-      threshold,
-      boxes,
-      classes,
-      classesDir
-    );
+    // Draw the label background.
+    ctx.fillStyle = "green";
+    const textWidth = ctx.measureText(
+      name + " " + (100 * score).toFixed(2) + "%"
+    ).width;
+    const textHeight = parseInt(font, 10); // base 10
+    ctx.fillRect(x, y, textWidth + 4, textHeight + 4);
 
-    detections.forEach((item) => {
-      const x = item["bbox"][0];
-      const y = item["bbox"][1];
-      const width = item["bbox"][2];
-      const height = item["bbox"][3];
-
-      // Draw the bounding box.
-      ctx.strokeStyle = "#00FFFF";
-      ctx.lineWidth = 4;
-      ctx.strokeRect(x, y, width, height);
-
-      // Draw the label background.
-      ctx.fillStyle = "#00FFFF";
-      const textWidth = ctx.measureText(
-        item["label"] + " " + (100 * item["score"]).toFixed(2) + "%"
-      ).width;
-      const textHeight = parseInt(font, 10); // base 10
-      ctx.fillRect(x, y, textWidth + 4, textHeight + 4);
-    });
-
-    detections.forEach((item) => {
-      const x = item["bbox"][0];
-      const y = item["bbox"][1];
-
-      // Draw the text last to ensure it's on top.
-      ctx.fillStyle = "#000000";
-      ctx.fillText(
-        item["label"] + " " + (100 * item["score"]).toFixed(2) + "%",
-        x,
-        y
-      );
-    });
+    // Draw the text last to ensure it's on top.
+    ctx.fillStyle = "white";
+    ctx.fillText(name + " " + (100 * score).toFixed(2) + "%", x, y);
   };
 
   render() {
     return (
       <div>
-        <h1>Real-Time Object Detection: Kangaroo</h1>
-        <h3>MobileNetV2</h3>
-        <video
-          style={{ height: "600px", width: "500px" }}
-          className="size"
-          autoPlay
-          playsInline
-          muted
-          ref={this.videoRef}
-          width="600"
-          height="500"
-          id="frame"
-        />
-        <canvas
-          className="size"
-          ref={this.canvasRef}
-          width="600"
-          height="500"
-        />
+        <div className="App-header">
+          <video
+            width={640}
+            height={480}
+            autoPlay
+            playsInline
+            muted
+            ref={this.videoRef}
+            id="frame"
+            style={{
+              position: "absolute",
+              marginLeft: "auto",
+              marginRight: "auto",
+              left: 0,
+              right: 0,
+              textAlign: "center",
+              zindex: 9,
+              width: 640,
+              height: 480,
+            }}
+          />
+          <canvas
+            ref={this.canvasRef}
+            width={640}
+            height={480}
+            style={{
+              position: "absolute",
+              marginLeft: "auto",
+              marginRight: "auto",
+              left: 0,
+              right: 0,
+              textAlign: "center",
+              zindex: 8,
+              width: 640,
+              height: 480,
+            }}
+          />
+        </div>
       </div>
     );
   }
