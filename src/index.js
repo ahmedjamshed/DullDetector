@@ -12,6 +12,7 @@ async function load_model() {
   const model = await tftasks.ObjectDetection.CustomModel.TFLite.load({
     model: "http://127.0.0.1:8080/model.tflite",
   });
+
   return model;
 }
 class App extends React.Component {
@@ -53,6 +54,7 @@ class App extends React.Component {
     const predections = await model.predict(video);
     this.buildDetectedObjects(predections);
     requestAnimationFrame(() => {
+      this.canvasRef.current.getContext("2d").clearRect(0, 0, 640, 480);
       this.detectFrame(video, model);
     });
   };
@@ -77,7 +79,7 @@ class App extends React.Component {
 
   renderPredictions = (left, top, w, h, name, score) => {
     const ctx = this.canvasRef.current.getContext("2d");
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    // ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     const x = top;
     const y = left;
     const width = w;
